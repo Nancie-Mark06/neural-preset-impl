@@ -1,0 +1,52 @@
+# 阶段 0 配置：跑通优先，效果不苛求（REPRODUCTION_PLAN.md §10）。
+# 路径按 Kaggle notebook 的约定写；本机跑冒烟时用 --out 覆盖输出目录、改 data.root。
+#
+# 冒烟：python -m neuralpreset.train --config configs/phase0.yaml --smoke --limit 300
+
+seed: 0
+device: cuda:0
+
+model:
+  k: 16                     # DNCM 中间维数（G1/G6）
+  act: none                 # none | relu | gelu（G1；阶段 0 只跑 none）
+  backbone: efficientnet_b0
+  pretrained:
+    mode: auto              # auto | torchvision | local | none
+    ckpt: null              # mode=local 时的 .pth 路径
+
+data:
+  root: /kaggle/input/coco10k/images
+  list: /kaggle/input/coco10k/coco10k.txt
+  size: 256                 # 随机裁出来的 patch 边长（G8）
+  num_workers: 4
+
+# 颜色扰动（G11 / G13）。每个算子带独立概率，单次最多叠加 max_ops 个。
+perturb:
+  lut_prob: 0.5             # 用 LUT 的概率；设为 0 可退回纯参数化扰动
+  lut_strength: [0.6, 1.0]  # LUT 与原因按该强度线性混合
+  max_ops: 4
+  clamp: true
+  ops:
+    brightness: {p: 0.7}
+    saturation: {p: 0.6}
+    hue:        {p: 0.4}
+    gamma:      {p: 0.5}
+    gain:       {p: 0.5}
+    matrix:     {p: 0.3}
+
+lut:
+  enable: true
+  npy: /kaggle/input/cubes/lut33_u8.npy
+  manifest: /kaggle/input/cubes/lut_manifest.json
+
+train:
+  epochs: 8
+  batch_size: 24            # bs=24 张干净图 ⇒ 每步 48 个视图（G13）
+  lr: 0.0003                # Adam（G14）
+  lambda_con: 10.0          # 式(6) 的权重（G3）
+  amp: true
+  grad_clip: 1.0
+  milestones: [6]           # 8 epoch 下 6/8 处各降一次学习率
+  gamma: 0.1
+  log_every: 20
+  out: /kaggle/working/out

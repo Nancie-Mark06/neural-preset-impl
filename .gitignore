@@ -1,0 +1,29 @@
+# ---- 数据与产物（体积大，一律不进仓库）----
+data/
+out/
+checkpoints/
+runs/
+*.zip
+*.pth
+*.onnx
+*.npy
+*.npz
+
+# 第三方评测模型的权重是仓库资产，例外放行
+!third_party/metric/style_similiary/*.onnx
+!third_party/metric/content_similiary/*.pth
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
