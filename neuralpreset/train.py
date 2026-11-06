@@ -22,7 +22,6 @@ import torch
 import torch.nn as nn
 
 from .data.coco import CocoPatchDataset
-from .data.lut import LUTBank
 from .data.perturb import ColorPerturber, PerturbConfig
 from .losses import NeuralPresetLoss
 from .pipeline import build_model
@@ -53,18 +52,52 @@ def set_seed(seed: int) -> None:
 
 
 def _build_perturber(cfg: dict, device) -> ColorPerturber:
+    """按配置搭 LUT 库 + 扰动器。
+
+    `lut.backend` 两个选择：
+
+    * `pillow`（默认）：`PilLUTBank` 把 `.cube` 全量载入内存（308 条 ≈ 409 MB），
+      用原始尺寸查表，零重采样误差；Linux fork 下 worker 共享只读内存。
+    * `npy`：先离线 `scripts/prepare_lut.py` 压成 uint8 表，体积小、载入快，
+      但有重采样误差（64³→33³ 平均 3.2/255）。留给"LUT 涨到几千条"的场合。
+    """
     pcfg = PerturbConfig.from_dict(cfg.get("perturb"))
     lut_cfg = cfg.get("lut") or {}
     bank = None
     if lut_cfg.get("enable") and pcfg.lut_prob > 0:
-        npy = lut_cfg.get("npy")
-        if not npy or not os.path.isfile(npy):
-            raise FileNotFoundError(
-                f"lut.enable=true 但找不到 {npy!r}；先跑 scripts/prepare_lut.py 生成 lut33_u8.npy，"
-                "或把 lut.enable 设为 false。"
-            )
-        bank = LUTBank.load(npy, lut_cfg.get("manifest"))
-        print(f"[lut] 载入 {len(bank)} 条 LUT，{bank.size}³")
+        backend = str(lut_cfg.get("backend", "pillow")).lower()
+        if backend == "pillow":
+            cube_dir = lut_cfg.get("cube_dir")
+            if not cube_dir or not os.path.isdir(cube_dir):
+                raise FileNotFoundError(
+                    f"lut.backend=pillow 但 cube_dir={cube_dir!r} 不存在或不是目录。"
+                    "把 .cube 目录挂进来，或改成 lut.backend=npy / lut.enable=false。"
+                )
+            from .data.lut import PilLUTBank, scan_cubes
+
+            paths = scan_cubes(cube_dir)
+            if not paths:
+                raise FileNotFoundError(f"{cube_dir!r} 下没有找到任何 .cube 文件")
+            bank, stats = PilLUTBank.from_cubes(paths)
+            print(f"[lut] pillow 后端：载入 {len(bank)}/{stats['total']} 条 LUT，"
+                  f"原生尺寸，耗时 {stats['seconds']:.1f}s")
+            if stats["failed"]:
+                print(f"[lut] 跳过 {len(stats['failed'])} 个坏文件，例如 "
+                      f"{os.path.basename(stats['failed'][0]['path'])}: {stats['failed'][0]['error']}")
+        elif backend == "npy":
+            npy = lut_cfg.get("npy")
+            if not npy or not os.path.isfile(npy):
+                raise FileNotFoundError(
+                    f"lut.backend=npy 但找不到 {npy!r}；先跑 scripts/prepare_lut.py"
+                    "（需要 torch），或改用 lut.backend=pillow。"
+                )
+            from .data.lut_npy import LUTBank, NpyLutBank
+
+            raw = LUTBank.load(npy, lut_cfg.get("manifest"))
+            bank = NpyLutBank(raw)
+            print(f"[lut] npy 后端（兼容模式，慢）：载入 {len(bank)} 条 LUT，{raw.size}³")
+        else:
+            raise ValueError(f"未知 lut.backend={backend!r}，可选：pillow | npy")
     elif pcfg.lut_prob > 0:
         print("[lut] 未启用 LUT，退回纯参数化扰动")
         pcfg.lut_prob = 0.0

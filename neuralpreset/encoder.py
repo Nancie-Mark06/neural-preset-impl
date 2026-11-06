@@ -96,6 +96,12 @@ class DualHeadEncoder(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.head_d = nn.Linear(self.feat_dim, k * k)
         self.head_r = nn.Linear(self.feat_dim, k * k)
+        # ImageNet 预训练权重是在 normalize 过的输入上训出来的；不吃这一步，
+        # GAP 特征分布会整体偏移，预训练等于白用。放在 buffer 里（不进 state_dict）。
+        self.register_buffer("_in_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1),
+                             persistent=False)
+        self.register_buffer("_in_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1),
+                             persistent=False)
         self._init_heads()
 
     # ------------------------------------------------------------------ #
@@ -155,7 +161,7 @@ class DualHeadEncoder(nn.Module):
         """thumb [B,3,256,256] → (d [B,k,k], r [B,k,k])。"""
         if thumb.dim() != 4 or thumb.shape[1] != 3:
             raise ValueError(f"thumb 期望 [B,3,H,W]，收到 {tuple(thumb.shape)}")
-        f = self.features(thumb)              # [B, 1280, h, w]
+        f = self.features((thumb - self._in_mean) / self._in_std)   # [B, 1280, h, w]
         g = self.pool(f).flatten(1)           # [B, 1280]
         B = g.shape[0]
         d = self.head_d(g).reshape(B, self.k, self.k)

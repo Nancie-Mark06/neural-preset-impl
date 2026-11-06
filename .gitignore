@@ -1,5 +1,6 @@
 # ---- 数据与产物（体积大，一律不进仓库）----
-data/
+# 用 /data/ 只锚定根目录：写成 data/ 会把 neuralpreset/data/ 整个源码包也忽略掉。
+/data/
 out/
 checkpoints/
 runs/

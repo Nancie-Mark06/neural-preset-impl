@@ -36,8 +36,12 @@ perturb:
 
 lut:
   enable: true
-  npy: /kaggle/input/cubes/lut33_u8.npy
-  manifest: /kaggle/input/cubes/lut_manifest.json
+  # pillow：.cube 全量入内存（308 条 ≈ 409 MB），原生尺寸、零重采样；默认。
+  # npy   ：先离线压成 uint8 表（scripts/prepare_lut.py），省内存但有重采样误差。
+  backend: pillow
+  cube_dir: /kaggle/input/cubes       # backend=pillow 时用：递归找 .cube
+  npy: /kaggle/input/cubes/lut33_u8.npy        # 仅 backend=npy
+  manifest: /kaggle/input/cubes/lut_manifest.json  # 仅 backend=npy
 
 train:
   epochs: 8

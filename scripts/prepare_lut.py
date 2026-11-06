@@ -1,11 +1,20 @@
-"""把一堆 `.cube` 文件整理成训练能直接用的 `lut33_u8.npy` + `lut_manifest.json`。
+"""【可选】把一堆 `.cube` 压成 `lut33_u8.npy` + `lut_manifest.json`。
+
+**默认的 LUT 后端不需要跑这个脚本**：`lut.backend: pillow` 会把 `.cube` 全量载入
+内存（308 条 ≈ 409 MB，原生尺寸、零重采样），训练时用 `pillow-lut` 直接查表。
+只有在下面两种情况才跑它：
+
+1. LUT 数量涨到几千条，全量入内存装不下（5000 条原生尺寸 ≈ 15 GB）；
+2. 需要一份冻结的二进制产物做跨实验复现。
 
     python scripts/prepare_lut.py --cube-dir C:\\...\\cubes --out-npy data/lut33_u8.npy
 
-产物（由 `neuralpreset/data/lut.py::LUTBank` 负责读写）：
+产物（由 `neuralpreset/data/lut_npy.py::LUTBank` 负责读写）：
 
 * `.npy`：uint8，形状 `[M, 3, S, S, S]`。308 条 33³ 约 33 MB；
 * `.json`：`{"count", "size", "names": [...], "items": [...], "skipped": [...]}`。
+
+**注意有损**：64³→33³ 实测平均偏差 3.2/255、p99 13/255。培训练目标够用，做精确复现不够。
 
 解析失败 / 尺寸异常的 LUT **不会**让脚本退出，只会记进 manifest，
 最后打一张汇总表 —— 毕竟第二大的风险（G10）就是 LUT 来源质量。
@@ -24,7 +33,7 @@ import torch
 # 允许从仓库根直接 `python scripts/prepare_lut.py`
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from neuralpreset.data.lut import LUTBank, parse_cube, resample  # noqa: E402
+from neuralpreset.data.lut_npy import LUTBank, parse_cube, resample  # noqa: E402
 
 
 def scan_cubes(cube_dir: str) -> list:
@@ -42,7 +51,7 @@ def identity_lut(size: int, dtype=torch.float32) -> torch.Tensor:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="整理 .cube LUT → npy + manifest")
+    ap = argparse.ArgumentParser(description="【可选】整理 .cube LUT → npy + manifest（仅 backend=npy 需要）")
     ap.add_argument("--cube-dir", required=True)
     ap.add_argument("--out-npy", default="data/lut33_u8.npy")
     ap.add_argument("--out-manifest", default=None, help="默认与 npy 同名 .json")
