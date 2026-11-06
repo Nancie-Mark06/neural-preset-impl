@@ -3,7 +3,7 @@
 #
 # 冒烟：python -m neuralpreset.train --config configs/phase0.yaml --smoke --limit 300
 
-seed: 0
+seed: 42
 device: cuda:0
 
 model:
@@ -17,7 +17,7 @@ model:
 data:
   # Kaggle 上图片是一个 dataset，挂载点形如 /kaggle/input/<slug>/。
   # 这里写 dataset 根目录，程序会**递归**找图片；notebook 会自动探测后覆盖。
-  root: /kaggle/input/coco10k
+  root: /kaggle/input/COCOTrain2017
   # 清单可选：null 时递归扫描 root、按相对路径排序、取前 limit 张。
   # 同样的 dataset ⇒ 每次顺序完全一样（train.py 会打印名单指纹备查）。
   list: null
