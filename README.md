@@ -133,8 +133,12 @@ G16 必须在阶段 1 解决（尺度锚定），而不是忽略。
 
 ## 与规划文档的偏离（有意为之）
 
-1. **包放在仓库根 `neuralpreset/`，不是 `src/neuralpreset/`** —— Kaggle 上 `unzip` 后
-   直接 `python -m neuralpreset.train` 就能用，省掉一层 `PYTHONPATH`。
+1. **包放在仓库根 `neuralpreset/`，不是 `src/neuralpreset/`** —— 在仓库根直接
+   `python -m neuralpreset.train` 就能用，省掉一层 `PYTHONPATH`。
+   前提是**当前目录就是仓库根**：仓库里没有 `pyproject.toml`，包没被安装过，
+   只有 cwd / `PYTHONPATH` 指到仓库根时才 import 得到。Kaggle notebook 把代码解压到
+   `/kaggle/working/code`、而内核 cwd 是 `/kaggle/working`，所以 cell 1 会把 `CODE_DIR`
+   写进 `PYTHONPATH`（`sys.path.insert` 只对内核生效，`!python -m ...` 是另一个进程）。
 2. **指标修复集中在 `third_party/metric/api.py`**，作者原始文件一字未改（便于溯源对照）。
    规划 §5.1 说作者把宽高写反 —— 复核后**这是误判**，`h, w = image.size` 与
    `resize((w, h))` 互相抵消，纵横比正确；真正要改的只有 `multichannel`→`channel_axis` 和写死的路径。
@@ -152,7 +156,7 @@ G16 必须在阶段 1 解决（尺度锚定），而不是忽略。
 
 - [ ] `pytest tests` 全绿（本机无 torch；`pillow-lut` 那几条也没跑过）
 - [ ] `pillow-lut` 在 Kaggle 上的 `pip install` 与 308 条 `.cube` 的载入耗时（预期 5–15 s）
-- [ ] CPU 冒烟跑通、Kaggle T4 上 8 epoch 的 `L_rec` 曲线（A2/A3）
+- [ ] CPU 冒烟跑通、Kaggle T4 上 32 epoch 的 `L_rec` 曲线（A2/A3）
 - [ ] 指标能出数（A5）：风格 ONNX 在本机单独测过 test_data（0.8692），但没有在 pipeline 出图上跑过
 - [ ] `--resume` 续训（A6）
 - [ ] **G16 尺度退化**：目前只监控、不修（规划里明确"阶段 0 假装不存在"）

@@ -49,13 +49,13 @@ lut:
   manifest: /kaggle/input/cubes/lut_manifest.json  # 仅 backend=npy
 
 train:
-  epochs: 8
+  epochs: 32                # 论文值（REPRODUCTION_PLAN.md:623）；阶段 0 原先压到 8
   batch_size: 24            # bs=24 张干净图 ⇒ 每步 48 个视图（G13）
   lr: 0.0003                # Adam（G14）
   lambda_con: 10.0          # 式(6) 的权重（G3）
   amp: true
   grad_clip: 1.0
-  milestones: [6]           # 8 epoch 下 6/8 处各降一次学习率
+  milestones: [24]          # 32 epoch 下第 24 个 epoch 结束时降一次（论文：24ep 后 ×0.1）
   gamma: 0.1
   log_every: 20
   out: /kaggle/working/out
