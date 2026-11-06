@@ -1,6 +1,10 @@
-"""从 COCO 原始目录里挑出固定的 10k 训练清单 + 200 张评测用内容图。
+"""【可选】从 COCO 原始目录里挑出固定的 10k 训练清单 + 200 张评测用内容图。
 
-    # 只写清单（推荐，上传前再决定要不要拷图）
+阶段 0 **不需要**它：`train.py` 在没有清单时会递归扫描目录、按相对路径排序、
+取前 `data.limit` 张（同样的 dataset 每次顺序一致，会打印名单指纹）。
+只有当你想要一份"可以冻结、可以跨机器核对"的显式清单时才跑这个脚本。
+
+    # 只写清单
     python scripts/build_split.py --coco-dir C:\\...\\train2017 --n 10000 --holdout 200 \
         --out-list data/coco10k.txt --out-val data/val_content.txt
 

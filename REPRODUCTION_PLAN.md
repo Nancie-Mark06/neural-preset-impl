@@ -710,3 +710,13 @@ PIL patch（短边 256 → 随机裁 256²）→ 套 LUT（strength ∈ [0.6,1.0
 - 原生尺寸 float32 常驻 ≈ 409 MB；若走 npy 后端，原生尺寸 uint8 102 MB、统一 33³ 仅 33 MB。
 - 保真度实测（30,000 个随机色，单位 /255）：64³→33³ 平均 3.17、p99 12.97；33³→33³ 平均 0.11；32³→33³ 平均 0.25、p99 1.64；16³→33³ 平均 0.80（最大值来自插值过冲被 clip，不是精度）。
 
+### 12.4 Kaggle 输入形态变更（2026-11-06 晚，用户口径）
+
+用户确认：**图片与 `.cube` 都以 Kaggle dataset 的形式挂到 `/kaggle/input/`，且不准备清单文件**。为此 §10 的两条假设作废：
+
+- **U1（固定 10k 清单）降级为可选**。`CocoPatchDataset` 的 `list_file` 现在允许为 `None`：`scan_images(root)` 递归扫描、返回相对路径、按字典序排序，`limit` 在排序后切前 N（默认 `data.limit: 10000`）。同一份 dataset ⇒ 每次顺序完全一样；`fingerprint()` 打印名单 sha1 前 12 位，用来核对"两次跑的是不是同一批图"。`scripts/build_split.py` 保留为"想冻结显式清单时才跑"的可选工具。
+- **U2（代码怎么进 Kaggle）不变**，但挂载结构不再要求固定 slug：notebook cell 1 用 `glob('/kaggle/input/**/*.cube')` 找 LUT 目录，用 `os.walk` 统计各目录图片数、取最多的那个当图片目录，并打印前 5 个候选让人工纠错；cell 3/4 用 `--data-root/--cube-dir/--data-list none` 覆盖 yaml。
+- **评测集改为"训练没见过的尾巴"**：排序后第 10001 张起取 200 对（现场写 `pairs.txt`），避免 COCO 留出图与训练图重叠 —— 原 §10 的 `val/content` + `val/style` 双目录方案在只有一个图片 dataset 时不可行。
+- 新增命令行覆盖：`--data-root` / `--data-list`（`none` = 不用清单）/ `--cube-dir` / `--lut-backend` / `--no-lut`；`evaluate.py` 的 `_list_images`/`infer.py` 的 `list_images` 都改成递归 + 相对路径，出图名用 `_flat_stem` 压平子目录。
+
+

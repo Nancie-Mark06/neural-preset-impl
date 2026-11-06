@@ -45,14 +45,14 @@ neuralpreset/
     lut.py       【默认】pillow-lut 后端：.cube 全量入内存，原生尺寸、零重采样
     lut_npy.py   【可选】.cube 离线压成 uint8 npy（几千条 LUT 时才用）
     perturb.py   颜色扰动算子集（PIL 套 LUT → 张量做参数化算子）
-    coco.py      COCO patch 数据集（一图两视图）
+    coco.py      COCO patch 数据集（一图两视图；无清单时递归扫描按名字取前 N 张）
   train.py       训练入口（--smoke / --resume）
   evaluate.py    批量出图 + 论文两个指标
   infer.py       单图 / 整目录推理
 configs/phase0.yaml   阶段 0 唯一配置
 scripts/
   prepare_lut.py      【可选】.cube 目录 → lut33_u8.npy + manifest（仅 npy 后端）
-  build_split.py      COCO → 固定 10k 清单 + 200 张评测留出
+  build_split.py      【可选】COCO → 固定 10k 清单 + 200 张评测留出（想要冻结清单时才跑）
 third_party/metric/   论文官方指标（ONNX + LDC 权重，原文件未改，见其 README）
 tests/                20 条单测（数学性质 + 数据侧），不需要数据集
 notebooks/kaggle_train.ipynb   7 个 cell 的 Kaggle 跑法
@@ -62,9 +62,18 @@ notebooks/kaggle_train.ipynb   7 个 cell 的 Kaggle 跑法
 
 ### Kaggle（目标环境）
 
-1. 把本仓库打成 `code.zip`（不含 `data/`），上传为私有 dataset；准备 COCO 10k + `.cube` 两个 dataset；
+1. 把本仓库打成 `code.zip`（不含 `data/`），上传为私有 dataset；图片和 `.cube` 各传一个 dataset（目录层级随意）；
 2. 新建 Notebook，`Accelerator: GPU T4 x2`，`Internet: On`（同时用来 `pip install pillow-lut`、下 21 MB 权重）；
-3. 按 `notebooks/kaggle_train.ipynb` 从上到下跑：解压 → 装 pillow-lut + 数 cube → **冒烟** → 全量 → 出图/指标 → 归档。
+3. 按 `notebooks/kaggle_train.ipynb` 从上到下跑：解压 + **自动探测输入目录** → 装 pillow-lut + 核对数据量 → **冒烟** → 全量 → 出图/指标 → 归档。
+
+**不需要清单文件**：图片按相对路径排序后取前 `data.limit`（默认 10000）张；同一份 dataset 每次
+顺序完全一样，`train.py` 会打印名单指纹（sha1 前 12 位）方便核对。训练/评测用的路径都能用命令行覆盖：
+
+```bash
+python -m neuralpreset.train --config configs/phase0.yaml \
+    --data-root /kaggle/input/<图片dataset> --data-list none \
+    --cube-dir /kaggle/input/<lut dataset> --out /kaggle/working/out
+```
 
 LUT 默认**不需要**预打包：`pillow` 后端在启动时把 308 个 `.cube` 读进内存（约 409 MB，
 Kaggle 16 GB 内存无压力；Linux `fork` 下多个 worker 共享同一份只读内存，不会乘以 worker 数）。
@@ -83,7 +92,7 @@ python -m pytest tests -q                      # 20 条单测，不需要数据�
 python -m neuralpreset.train --config configs/phase0.yaml --smoke --limit 300   # CPU 冒烟
 ```
 
-配置里的路径默认按 Kaggle 写；本地跑冒烟时改 `data.root` / `data.list`，或加 `--out` 换输出目录。
+配置里的路径默认按 Kaggle 写；本地跑冒烟时改 `data.root`，或加 `--data-root <目录> --data-list none --out <输出目录>`。
 
 ## 常用命令
 

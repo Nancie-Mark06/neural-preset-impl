@@ -24,13 +24,14 @@ from .evaluate import load_image_tensor, load_model, save_tensor
 
 __all__ = ["main"]
 
-_IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
-
 
 def list_images(folder: str) -> List[str]:
-    names = sorted(f for f in os.listdir(folder) if f.lower().endswith(_IMG_EXT))
+    """递归列出图片，返回相对 `folder` 的路径（`/` 分隔），按字典序排序。"""
+    from .data.coco import scan_images
+
+    names = scan_images(folder)
     if not names:
-        raise FileNotFoundError(f"{folder} 里没有图片")
+        raise FileNotFoundError(f"{folder} 里没有图片（递归找过）")
     return names
 
 
@@ -114,7 +115,9 @@ def main(argv=None) -> int:
         content = load_image_tensor(os.path.join(args.content_dir, name)).to(device)
         with torch.no_grad():
             y = model.apply_preset(content, r, patch=patch)
-        out_path = os.path.join(args.out_dir, os.path.splitext(name)[0] + ".png")
+        # 名字可能带子目录，压平后再拼，避免在 out_dir 下建子目录
+        flat = os.path.splitext(name)[0].replace("/", "_").replace("\\", "_")
+        out_path = os.path.join(args.out_dir, flat + ".png")
         save_tensor(y, out_path)
         if idx % 20 == 0 or idx == len(names):
             print(f"[infer] {idx}/{len(names)}")

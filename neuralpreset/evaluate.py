@@ -79,10 +79,18 @@ def load_model(ckpt_path: str, device: torch.device, cfg_path: Optional[str] = N
 # 配对
 # ---------------------------------------------------------------------- #
 def _list_images(folder: str) -> List[str]:
-    names = sorted(f for f in os.listdir(folder) if f.lower().endswith(_IMG_EXT))
+    """递归列出图片，返回相对 `folder` 的路径（`/` 分隔），按字典序排序。"""
+    from .data.coco import scan_images
+
+    names = scan_images(folder)
     if not names:
-        raise FileNotFoundError(f"{folder} 里没有图片")
+        raise FileNotFoundError(f"{folder} 里没有图片（递归找过）")
     return names
+
+
+def _flat_stem(name: str) -> str:
+    """`a/b.jpg` → `a_b`，避免出图路径里混进子目录。"""
+    return os.path.splitext(name)[0].replace("/", "_").replace("\\", "_")
 
 
 def build_pairs(
@@ -95,7 +103,9 @@ def build_pairs(
     """返回 [(content_name, style_name)]。
 
     * 给了 `pair_file`：每行 `内容图 风格图`（相对各自目录），顺序原样保留；
-    * 否则从两个目录里**固定种子**抽样，不重复（`n_pairs` 超过组合数时自动截断）。
+    * 否则从两个目录里**固定种子**抽样，不重复（`n_pairs` 超过组合数时自动截断）；
+    * 两个目录是同一个时（Kaggle 上只有一份图片 dataset 的常见情况），
+      会跳过 `内容图 == 风格图` 的自配对 —— 那不构成风格迁移。
     """
     contents = _list_images(content_dir)
     if pair_file:
@@ -114,11 +124,28 @@ def build_pairs(
     if not style_dir:
         raise ValueError("要么给 --style-dir，要么给 --pairs")
     styles = _list_images(style_dir)
+    same_dir = os.path.abspath(style_dir) == os.path.abspath(content_dir)
     total = len(contents) * len(styles)
     take = min(n_pairs, total) if n_pairs else total
     rng = random.Random(seed)
-    picked = rng.sample(range(total), take)
-    return [(contents[i // len(styles)], styles[i % len(styles)]) for i in picked]
+
+    if not same_dir:
+        picked = rng.sample(range(total), take)
+        return [(contents[i // len(styles)], styles[i % len(styles)]) for i in picked]
+
+    # 同一目录：只取 i != j 的组合，按随机顺序去重
+    if len(contents) < 2:
+        raise ValueError(f"{content_dir} 至少要有 2 张图才能自配对评测")
+    pairs, seen = [], set()
+    attempts = 0
+    while len(pairs) < take and attempts < take * 50 + 1000:
+        i, j = rng.randrange(len(contents)), rng.randrange(len(styles))
+        attempts += 1
+        if i == j or (i, j) in seen:
+            continue
+        seen.add((i, j))
+        pairs.append((contents[i], styles[j]))
+    return pairs
 
 
 # ---------------------------------------------------------------------- #
@@ -172,9 +199,8 @@ def main(argv=None) -> int:
         r = model.compute_preset(style)
         y = model.apply_preset(content, r, patch=args.patch)
 
-        stem, _ = os.path.splitext(cname)
-        style_stem, _ = os.path.splitext(sname)
-        out_name = f"{stem}__{style_stem}.png"
+        # 名字里可能带子目录（Kaggle dataset 常见），压平后再拼输出文件名
+        out_name = f"{_flat_stem(cname)}__{_flat_stem(sname)}.png"
         if args.save_renders:
             save_tensor(y, os.path.join(render_dir, out_name))
 

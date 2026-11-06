@@ -247,8 +247,14 @@ def main(argv=None) -> int:
     ap.add_argument("--resume", default=None, help="ckpt 路径；'auto' 取 out 目录里最新的")
     ap.add_argument("--out", default=None, help="覆盖配置里的输出目录")
     ap.add_argument("--device", default=None, help="例如 cpu / cuda:0")
-    ap.add_argument("--limit", type=int, default=None, help="只用清单前 N 张（调试用）")
+    ap.add_argument("--limit", type=int, default=None, help="只用前 N 张（调试用；覆盖 data.limit）")
     ap.add_argument("--epochs", type=int, default=None)
+    ap.add_argument("--data-root", default=None, help="覆盖 data.root（图片目录，可递归）")
+    ap.add_argument("--data-list", default=None,
+                    help="覆盖 data.list；写 none 表示不读清单、按文件名排序自动取前 N 张")
+    ap.add_argument("--cube-dir", default=None, help="覆盖 lut.cube_dir（.cube 所在目录）")
+    ap.add_argument("--lut-backend", default=None, choices=["pillow", "npy"])
+    ap.add_argument("--no-lut", action="store_true", help="关掉 LUT，只用参数化扰动")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -256,12 +262,28 @@ def main(argv=None) -> int:
     dcfg = dict(cfg.get("data") or {})
     mcfg = dict(cfg.get("model") or {})
 
+    # ---- 命令行覆盖（Kaggle 上挂载路径每次可能不同，改命令行比改 yaml 省事）----
+    if args.data_root:
+        dcfg["root"] = args.data_root
+    if args.data_list is not None:
+        val = args.data_list.strip()
+        dcfg["list"] = None if val.lower() in ("", "none", "null", "-") else val
+    lcfg = dict(cfg.get("lut") or {})
+    if args.cube_dir:
+        lcfg["cube_dir"] = args.cube_dir
+    if args.lut_backend:
+        lcfg["backend"] = args.lut_backend
+    if args.no_lut:
+        lcfg["enable"] = False
+    cfg["lut"] = lcfg
+
     if args.epochs is not None:
         tcfg["epochs"] = args.epochs
     if args.smoke:
         tcfg.update({"epochs": 2, "batch_size": min(int(tcfg.get("batch_size", 24)), 8), "amp": False})
         dcfg.update({"num_workers": 0})
         args.limit = args.limit or 300
+    limit = args.limit if args.limit is not None else dcfg.get("limit")
 
     out_dir = args.out or tcfg.get("out") or "out"
     os.makedirs(out_dir, exist_ok=True)
@@ -282,11 +304,11 @@ def main(argv=None) -> int:
     perturber = _build_perturber(cfg, device)
     dataset = CocoPatchDataset(
         root=dcfg["root"],
-        list_file=dcfg["list"],
+        list_file=dcfg.get("list"),
         size=int(dcfg.get("size", 256)),
         perturber=perturber,
         seed=int(cfg.get("seed", 0)),
-        limit=args.limit,
+        limit=int(limit) if limit else None,
     )
     loader = torch.utils.data.DataLoader(
         dataset,
@@ -297,7 +319,8 @@ def main(argv=None) -> int:
         drop_last=True,
         persistent_workers=int(dcfg.get("num_workers", 4)) > 0,
     )
-    print(f"[data] {len(dataset)} 张 → {len(loader)} iters/epoch，bs={tcfg.get('batch_size')}")
+    print(f"[data] {len(dataset)} 张（{dataset.source}，名单指纹 {dataset.fingerprint()}），"
+          f"例如 {dataset.names[:2]} → {len(loader)} iters/epoch，bs={tcfg.get('batch_size')}")
 
     # ---- 优化 ----
     criterion = NeuralPresetLoss(lambda_con=float(tcfg.get("lambda_con", 10.0)))

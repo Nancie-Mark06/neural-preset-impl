@@ -216,3 +216,10 @@ def test_coco_dataset_shapes(tmp_path) -> None:
     ds2 = CocoPatchDataset(str(root), str(tmp_path / "list.txt"), size=64, perturber=None)
     it2 = ds2[0]
     assert torch.equal(it2["ii"], it2["clean"])
+
+    # 没有清单（Kaggle 上的常态）：递归扫描 + 按相对路径排序 + 取前 limit 张
+    ds3 = CocoPatchDataset(str(root), None, size=64, perturber=None, limit=2)
+    assert ds3.names == ["0000.png", "0001.png"]
+    assert len(ds3.fingerprint()) == 12
+    # 同一个目录扫两次顺序必须一致（否则两次训练不可比）
+    assert CocoPatchDataset(str(root), None, size=64, perturber=None).names == ds.names
